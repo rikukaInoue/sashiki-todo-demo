@@ -1,0 +1,10 @@
+version = 0.1
+
+# 手元から試しにデプロイする場合の既定値。
+# PR プレビューは .github/workflows/preview.yml が --stack-name などを上書きする。
+[default.deploy.parameters]
+stack_name = "twig-todo-manual"
+resolve_s3 = true
+resolve_image_repos = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false

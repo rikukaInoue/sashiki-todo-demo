@@ -1,0 +1,30 @@
+# ローカル開発用。プレビュー環境と同じイメージを MySQL 付きで動かす。
+#   docker compose up --build
+#   open http://localhost:8080
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: todo
+      TWIG_BRANCH: local
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./baseline/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

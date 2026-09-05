@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TODO — {{.Branch}}</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    header { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 1.5rem; }
+    .branch { font-size: .8rem; padding: .15rem .6rem; border-radius: 999px;
+              background: #2e7d32; color: #fff; }
+    .dbaddr { font-size: .75rem; opacity: .6; }
+    form.add { display: flex; gap: .5rem; margin: 1.5rem 0; }
+    form.add input[type=text] { flex: 1; padding: .5rem; font-size: 1rem; }
+    ul { list-style: none; padding: 0; }
+    li { display: flex; align-items: center; gap: .5rem; padding: .5rem 0;
+         border-bottom: 1px solid rgba(128,128,128,.3); }
+    li.done .title { text-decoration: line-through; opacity: .5; }
+    .title { flex: 1; }
+    .when { font-size: .75rem; opacity: .5; }
+    button { cursor: pointer; }
+    .error { background: rgba(200,0,0,.1); border: 1px solid rgba(200,0,0,.4);
+             padding: 1rem; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌿 TODO</h1>
+    <span class="branch">{{.Branch}}</span>
+    <span class="dbaddr">db: {{.DBAddr}}</span>
+  </header>
+
+  {{if .Error}}
+    <p class="error">{{.Error}}</p>
+  {{else}}
+    <form class="add" method="post" action="/todos">
+      <input type="text" name="title" placeholder="やること" autofocus required>
+      <button type="submit">追加</button>
+    </form>
+    <ul>
+      {{range .Todos}}
+      <li {{if .Done}}class="done"{{end}}>
+        <form method="post" action="/todos/{{.ID}}/toggle">
+          <button type="submit" title="切り替え">{{if .Done}}☑{{else}}☐{{end}}</button>
+        </form>
+        <span class="title">{{.Title}}</span>
+        <span class="when">{{.CreatedAt}}</span>
+        <form method="post" action="/todos/{{.ID}}/delete">
+          <button type="submit" title="削除">✕</button>
+        </form>
+      </li>
+      {{else}}
+      <li>TODO はまだありません</li>
+      {{end}}
+    </ul>
+  {{end}}
+</body>
+</html>
