@@ -102,3 +102,15 @@ MySQL には `baseline/schema.sql` が initdb として投入される。`migrat
 | `.github/workflows/deploy-shared.yml` | 共有 Lambda のデプロイ(アプリ変更時) |
 | `baseline/schema.sql` | ベースライン用スキーマ + シード(compose の initdb 兼用) |
 | `migrations/` | PR ごとに適用されるマイグレーション |
+
+## 公開(public 化)時の注意
+
+このリポジトリは **self-hosted runner** を使うため、public にする場合は必ず:
+
+1. ワークフローの全ジョブにあるフォーク除外ガード
+   (`github.event.pull_request.head.repo.full_name == github.repository`)を外さないこと。
+   フォーク PR のコードが runner(= sashiki サーバーの EC2、AWS 権限つき)で実行されるのを防ぐ
+2. Settings → Actions → 「Fork pull request workflows」で **全ての外部コントリビューターに承認を必須**にする
+3. sashiki 側の上限(`max_branches` / TTL)をデモ向けに絞っておく(承認済み PR でもリソースは有界)
+
+フォークからの PR はプレビューが作られない(ガードで skip される)仕様となる。
