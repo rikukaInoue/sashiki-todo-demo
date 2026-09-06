@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 )
@@ -101,6 +102,14 @@ func (a *App) dbFor(branch string) (*sql.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(2)
+	// sashiki は idle_stop_after で branch の mysqld を寝かせる。プールした
+	// コネクションを寿命無制限で使い回すと、backend が消えた後の「死んだ／
+	// 半端に閉じた」接続を再利用してプロトコルが midstream からズレ、
+	// go-sql-driver が readColumns で panic する(slice bounds out of range)。
+	// idle_stop_after / wait_timeout より確実に短い寿命で回収して再利用を防ぐ。
+	db.SetConnMaxLifetime(60 * time.Second)
+	db.SetConnMaxIdleTime(20 * time.Second)
+	db.SetMaxIdleConns(1)
 	a.dbs[branch] = db
 	return db, nil
 }
