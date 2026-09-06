@@ -55,12 +55,21 @@ jobs:
 
       # PR に migrations/*.sql があれば、この PR のブランチだけに適用する。
       # 他の PR や baseline には影響しない(スキーマも branch ごとに分離)。
-      - name: PR のマイグレーションを適用
+      - name: PR のマイグレーションを適用 (冪等)
         run: |
           shopt -s nullglob
+          MYSQL=(mysql -h 127.0.0.1 -P 3306 -u "${{ steps.sashiki.outputs.user }}" -pdev todo)
+          "${MYSQL[@]}" -e "CREATE TABLE IF NOT EXISTS _migrations (name VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
           for f in migrations/*.sql; do
-            echo "apply: $f"
-            mysql -h 127.0.0.1 -P 3306 -u "${{ steps.sashiki.outputs.user }}" -pdev todo < "$f"
+            name=$(basename "$f")
+            done=$("${MYSQL[@]}" -N -e "SELECT COUNT(*) FROM _migrations WHERE name='${name}'")
+            if [ "$done" = "1" ]; then
+              echo "skip (applied): $name"
+              continue
+            fi
+            echo "apply: $name"
+            "${MYSQL[@]}" < "$f"
+            "${MYSQL[@]}" -e "INSERT INTO _migrations (name) VALUES ('${name}')"
           done
 
   # AWS なしのローカルプレビュー: runner ホスト上でアプリを PR ごとのポートで起動する。
