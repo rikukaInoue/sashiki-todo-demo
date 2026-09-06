@@ -18,4 +18,5 @@ CREATE TABLE IF NOT EXISTS todos (
 INSERT INTO todos (title, done) VALUES
   ('sashiki のベースラインに入っているシードデータ', 1),
   ('PR を開いて DB ブランチが生えるのを見る', 0),
-  ('このブランチで好きに壊してみる(他のブランチは無傷)', 0);
+  ('このブランチで好きに壊してみる(他のブランチは無傷)', 0),
+  ('PR プレビューから追加されたシード', 0);
