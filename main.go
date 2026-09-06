@@ -147,12 +147,18 @@ func (a *App) render(w http.ResponseWriter, data PageData) {
 }
 
 // page は branch 表示用の PageData の共通部を作る。
+// DB の接続先は内部情報なので、公開ページには SHOW_DB_ADDR=true のとき
+// (ローカル開発)しか表示しない。
 func (a *App) page(branch, base string) PageData {
 	label := branch
 	if label == "" {
 		label = env("SASHIKI_BRANCH", "local")
 	}
-	return PageData{Base: base, Branch: label, DBAddr: a.addr}
+	d := PageData{Base: base, Branch: label}
+	if env("SHOW_DB_ADDR", "") == "true" {
+		d.DBAddr = a.addr
+	}
+	return d
 }
 
 func (a *App) index(w http.ResponseWriter, r *http.Request) {

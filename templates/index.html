@@ -30,7 +30,7 @@
   <header>
     <h1>🌿 TODO</h1>
     <span class="branch">{{.Branch}}</span>
-    <span class="dbaddr">db: {{.DBAddr}}</span>
+    {{if .DBAddr}}<span class="dbaddr">db: {{.DBAddr}}</span>{{end}}
   </header>
 
   {{if .Error}}
