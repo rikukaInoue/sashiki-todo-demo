@@ -75,8 +75,10 @@ Pull Request ──▶ GitHub Actions (self-hosted runner = sashiki サーバー
 
 ## マイグレーション(PR ごとのスキーマ)
 
-- `migrations/*.sql` を PR に含めると、db ジョブが**その PR のブランチにだけ**適用する
-  (適用済みは `_migrations` テーブルで記録され、synchronize でも冪等)
+- `migrations/*.sql` を PR に含めると、workflow がステージ(`/var/lib/sashiki/pr-src/pr-<N>/`)し、
+  **sashiki の on-create hook がブランチ作成時に適用**する(適用済みは `_migrations` で記録)。
+  hook は `@init` 取得前に走るため **`sashiki reset` しても migration は保持**され、
+  synchronize で migrations が変わった場合は自動で recreate → 再適用される
 - アプリはスキーマ差分に耐える作り(例: `todos.priority` は存在するときだけ表示)
 - **PR を merge すると `baseline-refresh.yml` が自動で baseline を更新する**
   (migrations/ を `/etc/sashiki/baseline-src/` に同期 → サーバー側 refresh.sh が
