@@ -1,8 +1,13 @@
 # PR プレビュー環境: sashiki の DB ブランチ + Lambda (Web Adapter) を PR ごとに作り、close で消す。
 #
+# 2 段構成:
+#   db  ジョブ — sashiki の DB ブランチ作成 + PR コメント(常に動く)
+#   app ジョブ — SAM で Lambda プレビューをデプロイ(vars.AWS_ROLE_ARN がある場合のみ)
+#
 # 必要な設定 (リポジトリの Variables / Secrets):
-#   vars.SASHIKI_API_URL                 sashikid の API URL (例 http://sashiki.internal:8080)
-#   secrets.SASHIKI_API_TOKEN            sashiki API トークン
+#   vars.SASHIKI_API_URL              sashikid の API URL (例 http://sashiki.internal:8080)
+#   secrets.SASHIKI_API_TOKEN         sashiki API トークン (runner が loopback なら不要)
+#   -- 以下は Lambda プレビューを使う場合のみ --
 #   vars.AWS_ROLE_ARN                 GHA OIDC で assume する IAM ロール
 #   vars.AWS_REGION                   例 ap-northeast-1
 #   vars.PREVIEW_SUBNET_IDS           Lambda を置くサブネット (カンマ区切り)
@@ -29,18 +34,29 @@ env:
   STACK_NAME: sashiki-todo-pr-${{ github.event.pull_request.number }}
 
 jobs:
-  deploy:
+  db:
     if: github.event.action != 'closed'
     runs-on: [self-hosted, vpc]
+    outputs:
+      host: ${{ steps.sashiki.outputs.host }}
+      port: ${{ steps.sashiki.outputs.port }}
+      user: ${{ steps.sashiki.outputs.user }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: sashiki の DB ブランチを作成 (冪等)
+      - name: sashiki の DB ブランチを作成 (冪等) + PR コメント
         id: sashiki
         uses: rikukaInoue/sashiki/action@main
         with:
           api_url: ${{ vars.SASHIKI_API_URL }}
           token: ${{ secrets.SASHIKI_API_TOKEN }}
+          profile: preview
+          comment: "true"
+
+  app:
+    needs: db
+    if: github.event.action != 'closed' && vars.AWS_ROLE_ARN != ''
+    runs-on: [self-hosted, vpc]
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -55,18 +71,18 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               BranchName="$SASHIKI_BRANCH" \
-              DbHost="${{ steps.sashiki.outputs.host }}" \
-              DbPort="${{ steps.sashiki.outputs.port }}" \
-              DbUser="${{ steps.sashiki.outputs.user }}" \
+              DbHost="${{ needs.db.outputs.host }}" \
+              DbPort="${{ needs.db.outputs.port }}" \
+              DbUser="${{ needs.db.outputs.user }}" \
               SubnetIds=\"${{ vars.PREVIEW_SUBNET_IDS }}\" \
               SecurityGroupIds=\"${{ vars.PREVIEW_SECURITY_GROUP_IDS }}\"
 
-      - name: プレビュー情報を PR にコメント (冪等更新)
+      - name: プレビュー URL を PR にコメント (冪等更新)
         env:
           GH_TOKEN: ${{ github.token }}
-          HOST: ${{ steps.sashiki.outputs.host }}
-          PORT: ${{ steps.sashiki.outputs.port }}
-          DBUSER: ${{ steps.sashiki.outputs.user }}
+          HOST: ${{ needs.db.outputs.host }}
+          PORT: ${{ needs.db.outputs.port }}
+          DBUSER: ${{ needs.db.outputs.user }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           url=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
@@ -100,11 +116,13 @@ jobs:
           token: ${{ secrets.SASHIKI_API_TOKEN }}
 
       - uses: aws-actions/configure-aws-credentials@v4
+        if: vars.AWS_ROLE_ARN != ''
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: プレビュースタックを削除
+        if: vars.AWS_ROLE_ARN != ''
         run: |
           aws cloudformation delete-stack --stack-name "$STACK_NAME"
           aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
