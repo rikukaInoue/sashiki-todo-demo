@@ -1,6 +1,6 @@
 -- ベースラインのスキーマ + シードデータ。
--- twig サーバーではこれをベース mysqld に投入したうえで、
--- mysqld を正常終了させてから @init スナップショットを取得する(twig README 参照)。
+-- sashiki サーバーではこれをベース mysqld に投入したうえで、
+-- mysqld を正常終了させてから @init スナップショットを取得する(sashiki README 参照)。
 -- ローカル開発では compose.yaml が initdb としてそのまま読み込む。
 
 SET NAMES utf8mb4;
@@ -16,6 +16,6 @@ CREATE TABLE IF NOT EXISTS todos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO todos (title, done) VALUES
-  ('twig のベースラインに入っているシードデータ', 1),
+  ('sashiki のベースラインに入っているシードデータ', 1),
   ('PR を開いて DB ブランチが生えるのを見る', 0),
   ('このブランチで好きに壊してみる(他のブランチは無傷)', 0);

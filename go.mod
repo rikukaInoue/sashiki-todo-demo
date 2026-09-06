@@ -1,4 +1,4 @@
-module github.com/rikukaInoue/twig-todo-demo
+module github.com/rikukaInoue/sashiki-todo-demo
 
 go 1.25
 

@@ -1,22 +1,22 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  twig-todo-demo: PR プレビュー環境 1 つ分(Lambda + Function URL)。
-  DB は twig の DB ブランチを指す。PR ごとに 1 スタックをデプロイし、close で削除する。
+  sashiki-todo-demo: PR プレビュー環境 1 つ分(Lambda + Function URL)。
+  DB は sashiki の DB ブランチを指す。PR ごとに 1 スタックをデプロイし、close で削除する。
 
 Parameters:
   BranchName:
     Type: String
-    Description: twig のブランチ名 (例 pr-123)。UI 表示にも使う
+    Description: sashiki のブランチ名 (例 pr-123)。UI 表示にも使う
   DbHost:
     Type: String
-    Description: twig action の出力 host
+    Description: sashiki action の出力 host
   DbPort:
     Type: String
-    Description: twig action の出力 port
+    Description: sashiki action の出力 port
   DbUser:
     Type: String
-    Description: twig action の出力 user (dev@<branch> 形式)
+    Description: sashiki action の出力 user (dev@<branch> 形式)
   DbPassword:
     Type: String
     Default: ""
@@ -26,10 +26,10 @@ Parameters:
     Default: todo
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: twig サーバーに届くサブネット
+    Description: sashiki サーバーに届くサブネット
   SecurityGroupIds:
     Type: List<AWS::EC2::SecurityGroup::Id>
-    Description: twig サーバーの MySQL ポート帯へ egress できる SG
+    Description: sashiki サーバーの MySQL ポート帯へ egress できる SG
 
 Resources:
   TodoFunction:
@@ -40,7 +40,7 @@ Resources:
       Timeout: 30
       Environment:
         Variables:
-          TWIG_BRANCH: !Ref BranchName
+          SASHIKI_BRANCH: !Ref BranchName
           DB_HOST: !Ref DbHost
           DB_PORT: !Ref DbPort
           DB_USER: !Ref DbUser

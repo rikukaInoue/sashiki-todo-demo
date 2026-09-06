@@ -12,7 +12,7 @@ services:
       DB_USER: root
       DB_PASSWORD: root
       DB_NAME: todo
-      TWIG_BRANCH: local
+      SASHIKI_BRANCH: local
     depends_on:
       mysql:
         condition: service_healthy

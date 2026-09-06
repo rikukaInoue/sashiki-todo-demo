@@ -1,6 +1,6 @@
-// twig のデモ用 TODO アプリ。
-// PR ごとに twig の DB ブランチ + Lambda (Web Adapter) のプレビュー環境が生える。
-// 接続先は環境変数で受け取るだけで、アプリは twig の存在を知らない。
+// sashiki のデモ用 TODO アプリ。
+// PR ごとに sashiki の DB ブランチ + Lambda (Web Adapter) のプレビュー環境が生える。
+// 接続先は環境変数で受け取るだけで、アプリは sashiki の存在を知らない。
 package main
 
 import (
@@ -51,7 +51,7 @@ func openDB() (*sql.DB, string) {
 	cfg := mysql.NewConfig()
 	cfg.Net = "tcp"
 	cfg.Addr = env("DB_HOST", "127.0.0.1") + ":" + env("DB_PORT", "3306")
-	cfg.User = env("DB_USER", "root") // twig のブランチでは dev@pr-<N> 形式
+	cfg.User = env("DB_USER", "root") // sashiki のブランチでは dev@pr-<N> 形式
 	cfg.Passwd = os.Getenv("DB_PASSWORD")
 	cfg.DBName = env("DB_NAME", "todo")
 	cfg.ParseTime = false
@@ -69,7 +69,7 @@ func main() {
 	app := &App{
 		db:     db,
 		tmpl:   template.Must(template.ParseFS(templateFS, "templates/*.html")),
-		branch: env("TWIG_BRANCH", "local"),
+		branch: env("SASHIKI_BRANCH", "local"),
 		dbAddr: addr,
 	}
 

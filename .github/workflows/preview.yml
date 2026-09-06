@@ -1,14 +1,14 @@
-# PR プレビュー環境: twig の DB ブランチ + Lambda (Web Adapter) を PR ごとに作り、close で消す。
+# PR プレビュー環境: sashiki の DB ブランチ + Lambda (Web Adapter) を PR ごとに作り、close で消す。
 #
 # 必要な設定 (リポジトリの Variables / Secrets):
-#   vars.TWIG_API_URL                 twigd の API URL (例 http://twig.internal:8080)
-#   secrets.TWIG_API_TOKEN            twig API トークン
+#   vars.SASHIKI_API_URL                 sashikid の API URL (例 http://sashiki.internal:8080)
+#   secrets.SASHIKI_API_TOKEN            sashiki API トークン
 #   vars.AWS_ROLE_ARN                 GHA OIDC で assume する IAM ロール
 #   vars.AWS_REGION                   例 ap-northeast-1
 #   vars.PREVIEW_SUBNET_IDS           Lambda を置くサブネット (カンマ区切り)
-#   vars.PREVIEW_SECURITY_GROUP_IDS   twig サーバーの MySQL ポート帯へ届く SG (カンマ区切り)
+#   vars.PREVIEW_SECURITY_GROUP_IDS   sashiki サーバーの MySQL ポート帯へ届く SG (カンマ区切り)
 #
-# ランナーは twigd の API に届く場所 (self-hosted, VPC 内) で動かす。
+# ランナーは sashikid の API に届く場所 (self-hosted, VPC 内) で動かす。
 name: pr-preview
 
 on:
@@ -25,8 +25,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TWIG_BRANCH: pr-${{ github.event.pull_request.number }}
-  STACK_NAME: twig-todo-pr-${{ github.event.pull_request.number }}
+  SASHIKI_BRANCH: pr-${{ github.event.pull_request.number }}
+  STACK_NAME: sashiki-todo-pr-${{ github.event.pull_request.number }}
 
 jobs:
   deploy:
@@ -35,12 +35,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: twig の DB ブランチを作成 (冪等)
-        id: twig
-        uses: rikukaInoue/twig/action@main
+      - name: sashiki の DB ブランチを作成 (冪等)
+        id: sashiki
+        uses: rikukaInoue/sashiki/action@main
         with:
-          api_url: ${{ vars.TWIG_API_URL }}
-          token: ${{ secrets.TWIG_API_TOKEN }}
+          api_url: ${{ vars.SASHIKI_API_URL }}
+          token: ${{ secrets.SASHIKI_API_TOKEN }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -54,24 +54,24 @@ jobs:
             --stack-name "$STACK_NAME" \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              BranchName="$TWIG_BRANCH" \
-              DbHost="${{ steps.twig.outputs.host }}" \
-              DbPort="${{ steps.twig.outputs.port }}" \
-              DbUser="${{ steps.twig.outputs.user }}" \
+              BranchName="$SASHIKI_BRANCH" \
+              DbHost="${{ steps.sashiki.outputs.host }}" \
+              DbPort="${{ steps.sashiki.outputs.port }}" \
+              DbUser="${{ steps.sashiki.outputs.user }}" \
               SubnetIds=\"${{ vars.PREVIEW_SUBNET_IDS }}\" \
               SecurityGroupIds=\"${{ vars.PREVIEW_SECURITY_GROUP_IDS }}\"
 
       - name: プレビュー情報を PR にコメント (冪等更新)
         env:
           GH_TOKEN: ${{ github.token }}
-          HOST: ${{ steps.twig.outputs.host }}
-          PORT: ${{ steps.twig.outputs.port }}
-          DBUSER: ${{ steps.twig.outputs.user }}
+          HOST: ${{ steps.sashiki.outputs.host }}
+          PORT: ${{ steps.sashiki.outputs.port }}
+          DBUSER: ${{ steps.sashiki.outputs.user }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           url=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue" --output text)
-          marker="<!-- twig-todo-preview -->"
+          marker="<!-- sashiki-todo-preview -->"
           body="${marker}
           ## 🌿 プレビュー環境
 
@@ -93,11 +93,11 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: [self-hosted, vpc]
     steps:
-      - name: twig の DB ブランチを削除 (404 も成功扱い)
-        uses: rikukaInoue/twig/action@main
+      - name: sashiki の DB ブランチを削除 (404 も成功扱い)
+        uses: rikukaInoue/sashiki/action@main
         with:
-          api_url: ${{ vars.TWIG_API_URL }}
-          token: ${{ secrets.TWIG_API_TOKEN }}
+          api_url: ${{ vars.SASHIKI_API_URL }}
+          token: ${{ secrets.SASHIKI_API_TOKEN }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:

@@ -1,11 +1,11 @@
-# twig-todo-demo
+# sashiki-todo-demo
 
-[twig](https://github.com/rikukaInoue/twig) を使ったアプリケーション開発のデモ。
-Go の TODO アプリに **PR ごとの使い捨てプレビュー環境**(アプリ = Lambda、DB = twig のブランチ)が付く。
+[sashiki](https://github.com/rikukaInoue/sashiki) を使ったアプリケーション開発のデモ。
+Go の TODO アプリに **PR ごとの使い捨てプレビュー環境**(アプリ = Lambda、DB = sashiki のブランチ)が付く。
 
 PR を開くと:
 
-1. twig が DB ブランチ `pr-<N>` を数秒で生やす(CoW クローン、実データ入り)
+1. sashiki が DB ブランチ `pr-<N>` を数秒で生やす(CoW クローン、実データ入り)
 2. SAM が Lambda (Web Adapter) を PR 専用スタックとしてデプロイ
 3. PR にプレビュー URL と MySQL 接続先がコメントされる
 
@@ -14,16 +14,16 @@ PR を閉じると、アプリのスタックも DB ブランチも削除され�
 ```
 Pull Request ──▶ GitHub Actions (self-hosted, VPC 内)
                    │
-                   ├─▶ twig action ──HTTP──▶ twigd     DB ブランチ pr-<N> を create/delete
+                   ├─▶ sashiki action ──HTTP──▶ sashikid     DB ブランチ pr-<N> を create/delete
                    │                          └─ mysqld@pr-<N> (ZFS CoW クローン)
                    │
-                   └─▶ sam deploy ──▶ CloudFormation スタック twig-todo-pr-<N>
+                   └─▶ sam deploy ──▶ CloudFormation スタック sashiki-todo-pr-<N>
                                         └─ Lambda (コンテナ + Lambda Web Adapter)
                                             ├─ Function URL = プレビュー URL
                                             └─ VPC 内から mysqld@pr-<N> に接続
 ```
 
-アプリ自体は twig を知らない。`DB_HOST` / `DB_PORT` / `DB_USER` を環境変数で受け取る
+アプリ自体は sashiki を知らない。`DB_HOST` / `DB_PORT` / `DB_USER` を環境変数で受け取る
 だけの普通の HTTP アプリで、Lambda Web Adapter を extension として同梱しているので
 ローカルでも Lambda でも同じイメージが動く。
 
@@ -35,7 +35,7 @@ open http://localhost:8080
 ```
 
 MySQL には `baseline/schema.sql` が initdb として投入される(プレビュー環境で
-twig のベースラインから生えてくるのと同じスキーマ + シード)。
+sashiki のベースラインから生えてくるのと同じスキーマ + シード)。
 
 コンテナを使わない場合:
 
@@ -45,22 +45,22 @@ go run . # DB_HOST などは環境変数で指定
 
 ## プレビュー環境のセットアップ
 
-### 1. twig サーバー側
+### 1. sashiki サーバー側
 
-twig の README に従って `twig init` 済みのサーバーを用意し、ベース mysqld に
+sashiki の README に従って `sashiki init` 済みのサーバーを用意し、ベース mysqld に
 `baseline/schema.sql` を投入してから、mysqld を正常終了させた状態で @init
-スナップショットを取得する。twigd の API が Actions ランナーから届くこと。
+スナップショットを取得する。sashikid の API が Actions ランナーから届くこと。
 
 ### 2. リポジトリの Variables / Secrets
 
 | 種別 | 名前 | 内容 |
 |---|---|---|
-| Variable | `TWIG_API_URL` | twigd の API URL(例 `http://twig.internal:8080`) |
-| Secret | `TWIG_API_TOKEN` | twig API トークン |
+| Variable | `SASHIKI_API_URL` | sashikid の API URL(例 `http://sashiki.internal:8080`) |
+| Secret | `SASHIKI_API_TOKEN` | sashiki API トークン |
 | Variable | `AWS_ROLE_ARN` | GHA の OIDC で assume する IAM ロール |
 | Variable | `AWS_REGION` | 例 `ap-northeast-1` |
 | Variable | `PREVIEW_SUBNET_IDS` | Lambda を置くサブネット(カンマ区切り) |
-| Variable | `PREVIEW_SECURITY_GROUP_IDS` | twig サーバーの MySQL ポート帯(3400〜)へ egress できる SG |
+| Variable | `PREVIEW_SECURITY_GROUP_IDS` | sashiki サーバーの MySQL ポート帯(3400〜)へ egress できる SG |
 
 IAM ロールには CloudFormation / Lambda / ECR / IAM(サービスロール作成)/
 EC2(ENI 管理)の権限が必要。`sam deploy --resolve-image-repos --resolve-s3` が
@@ -68,16 +68,16 @@ ECR リポジトリと S3 バケットを自動作成する。
 
 ### 3. ランナー
 
-`runs-on: [self-hosted, vpc]` — twigd に届く VPC 内の self-hosted ランナーに
+`runs-on: [self-hosted, vpc]` — sashikid に届く VPC 内の self-hosted ランナーに
 `sam` / `docker` / `aws` / `gh` を入れておく。
-twig が private リポジトリの間は、Actions の設定で organization / user 内の
-private action(`rikukaInoue/twig/action`)へのアクセスを許可しておくこと。
+sashiki が private リポジトリの間は、Actions の設定で organization / user 内の
+private action(`rikukaInoue/sashiki/action`)へのアクセスを許可しておくこと。
 
 ### 4. 動作確認
 
 PR を開く → 数分でプレビュー URL がコメントされる。
 `ALTER TABLE` や `DROP TABLE` を試すマイグレーション PR でも、壊れるのは
-その PR のブランチだけ。`twig reset pr-<N>` で作成時点に戻せる。
+その PR のブランチだけ。`sashiki reset pr-<N>` で作成時点に戻せる。
 
 ## 構成ファイル
 
@@ -94,5 +94,5 @@ PR を開く → 数分でプレビュー URL がコメントされる。
 
 - Function URL は `AuthType: NONE`(デモ用)。実運用では IAM 認証や CloudFront を挟む
 - Actions の closed イベントは取りこぼすことがあるため、DB ブランチの削除は
-  twig 側の TTL 自動回収(twig issue #8)と併用する。アプリ側のスタックも
-  同様に残ることがあるので、`twig-todo-pr-*` スタックの定期棚卸しを推奨
+  sashiki 側の TTL 自動回収(sashiki issue #8)と併用する。アプリ側のスタックも
+  同様に残ることがあるので、`sashiki-todo-pr-*` スタックの定期棚卸しを推奨
