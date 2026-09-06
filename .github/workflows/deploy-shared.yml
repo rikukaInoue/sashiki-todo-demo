@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['main.go', 'templates/**', 'Dockerfile', 'template.yaml', '.github/workflows/deploy-shared.yml']
+    paths: ['main.go', 'go.mod', 'go.sum', 'templates/**', 'Dockerfile', 'template.yaml', '.github/workflows/deploy-shared.yml']
 
 jobs:
   deploy:
@@ -36,4 +36,3 @@ jobs:
           url=$(aws cloudformation describe-stacks --stack-name sashiki-todo-shared \
             --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue" --output text)
           echo "### shared app URL: ${url}" >> "$GITHUB_STEP_SUMMARY"
-          echo "URL=${url}"

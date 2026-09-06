@@ -1,19 +1,11 @@
-# PR プレビュー環境: sashiki の DB ブランチ + Lambda (Web Adapter) を PR ごとに作り、close で消す。
-#
-# 2 段構成:
-#   db  ジョブ — sashiki の DB ブランチ作成 + PR コメント(常に動く)
-#   app ジョブ — SAM で Lambda プレビューをデプロイ(vars.AWS_ROLE_ARN がある場合のみ)
-#
-# 必要な設定 (リポジトリの Variables / Secrets):
-#   vars.SASHIKI_API_URL              sashikid の API URL (例 http://sashiki.internal:8080)
-#   secrets.SASHIKI_API_TOKEN         sashiki API トークン (runner が loopback なら不要)
-#   -- 以下は Lambda プレビューを使う場合のみ --
-#   vars.AWS_ROLE_ARN                 GHA OIDC で assume する IAM ロール
-#   vars.AWS_REGION                   例 ap-northeast-1
-#   vars.PREVIEW_SUBNET_IDS           Lambda を置くサブネット (カンマ区切り)
-#   vars.PREVIEW_SECURITY_GROUP_IDS   sashiki サーバーの MySQL ポート帯へ届く SG (カンマ区切り)
-#
-# ランナーは sashikid の API に届く場所 (self-hosted, VPC 内) で動かす。
+# PR プレビュー環境: sashiki の DB ブランチを PR ごとに作り、close で消す。
+# アプリの出し方は 3 モード(詳細は README「3 つの動作モード」):
+#   db         — DB ブランチ作成 + migrations 適用 + PR コメント(常に動く)
+#   app-shared — 共有 Lambda の URL (https://pr-N.<PREVIEW_DOMAIN>/) をコメント(vars.PREVIEW_DOMAIN)
+#   app        — PR ごとに SAM スタック(vars.AWS_REGION あり && PREVIEW_DOMAIN 空)
+#   app-local  — runner ホストの systemd unit(vars.LOCAL_PREVIEW=true)
+#   cleanup    — close で DB ブランチ削除(+ モードに応じた後片付け)
+# Variables/Secrets の一覧は README を参照。runner は sashikid に届く場所で動かす。
 name: pr-preview
 
 on:

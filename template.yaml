@@ -1,8 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  sashiki-todo-demo: PR プレビュー環境 1 つ分(Lambda + Function URL)。
-  DB は sashiki の DB ブランチを指す。PR ごとに 1 スタックをデプロイし、close で削除する。
+  sashiki-todo-demo の Lambda (Web Adapter) + Function URL。
+  共有モード(MultiBranch=true, スタック sashiki-todo-shared)では 1 つの Lambda が
+  サブドメイン/パスから branch を判定して全 PR を提供する。
+  PR ごとスタックモードでは PR ごとにデプロイし close で削除する。
 
 Parameters:
   BranchName:
@@ -32,7 +34,7 @@ Parameters:
     Type: String
     Default: "false"
     AllowedValues: ["true", "false"]
-    Description: 共有アプリモード(URL パス /b/<branch>/ でブランチを切り替える)
+    Description: 共有アプリモード(サブドメイン <branch>.<BaseDomain> または /b/<branch>/ で切替)
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: sashiki サーバーに届くサブネット

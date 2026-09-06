@@ -69,14 +69,14 @@ func env(key, fallback string) string {
 
 func newApp() *App {
 	return &App{
-		tmpl:   template.Must(template.ParseFS(templateFS, "templates/*.html")),
-		addr:   env("DB_HOST", "127.0.0.1") + ":" + env("DB_PORT", "3306"),
-		user:   env("DB_USER", "root"),
-		pass:   os.Getenv("DB_PASSWORD"),
-		dbname: env("DB_NAME", "todo"),
-		multi:  env("MULTI_BRANCH", "") == "true",
+		tmpl:       template.Must(template.ParseFS(templateFS, "templates/*.html")),
+		addr:       env("DB_HOST", "127.0.0.1") + ":" + env("DB_PORT", "3306"),
+		user:       env("DB_USER", "root"),
+		pass:       os.Getenv("DB_PASSWORD"),
+		dbname:     env("DB_NAME", "todo"),
+		multi:      env("MULTI_BRANCH", "") == "true",
 		baseDomain: env("BASE_DOMAIN", ""),
-		dbs:    map[string]*sql.DB{},
+		dbs:        map[string]*sql.DB{},
 	}
 }
 
