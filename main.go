@@ -18,6 +18,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/go-sql-driver/mysql"
@@ -50,6 +51,9 @@ type App struct {
 	pass   string
 	dbname string
 	multi  bool
+	// baseDomain が設定されると <branch>.<baseDomain> のサブドメインでも
+	// ブランチを判定する(CloudFront が Host を x-forwarded-host に写す)
+	baseDomain string
 
 	mu  sync.Mutex
 	dbs map[string]*sql.DB // branch(単一モードは "") → 接続
@@ -70,6 +74,7 @@ func newApp() *App {
 		pass:   os.Getenv("DB_PASSWORD"),
 		dbname: env("DB_NAME", "todo"),
 		multi:  env("MULTI_BRANCH", "") == "true",
+		baseDomain: env("BASE_DOMAIN", ""),
 		dbs:    map[string]*sql.DB{},
 	}
 }
@@ -99,10 +104,33 @@ func (a *App) dbFor(branch string) (*sql.DB, error) {
 	return db, nil
 }
 
+// hostBranch はサブドメインからブランチ名を取り出す(該当しなければ "")。
+func (a *App) hostBranch(r *http.Request) string {
+	if a.baseDomain == "" {
+		return ""
+	}
+	h := r.Header.Get("X-Forwarded-Host")
+	if h == "" {
+		h = r.Host
+	}
+	if i := strings.IndexByte(h, ':'); i >= 0 {
+		h = h[:i]
+	}
+	sub, ok := strings.CutSuffix(h, "."+a.baseDomain)
+	if !ok || !branchNameRe.MatchString(sub) {
+		return ""
+	}
+	return sub
+}
+
 // reqCtx はリクエストから (branch, base) を解決する。
+// サブドメイン(pr-6.sashiki-demo.example)→ パス(/b/pr-6/)の順で判定する。
 func (a *App) reqCtx(r *http.Request) (branch, base string, err error) {
 	if !a.multi {
 		return "", "/", nil
+	}
+	if hb := a.hostBranch(r); hb != "" {
+		return hb, "/", nil
 	}
 	branch = r.PathValue("branch")
 	if !branchNameRe.MatchString(branch) {
@@ -120,13 +148,21 @@ func main() {
 		mux.HandleFunc("POST /b/{branch}/todos", app.create)
 		mux.HandleFunc("POST /b/{branch}/todos/{id}/toggle", app.toggle)
 		mux.HandleFunc("POST /b/{branch}/todos/{id}/delete", app.delete)
+		// サブドメイン (pr-6.<base_domain>) で来た場合はルート直下で提供する
+		mux.HandleFunc("POST /todos", app.create)
+		mux.HandleFunc("POST /todos/{id}/toggle", app.toggle)
+		mux.HandleFunc("POST /todos/{id}/delete", app.delete)
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if app.hostBranch(r) != "" && r.URL.Path == "/" {
+				app.index(w, r)
+				return
+			}
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			if r.URL.Path != "/" {
 				w.WriteHeader(http.StatusNotFound)
 			}
 			fmt.Fprintln(w, "sashiki todo demo (multi-branch)")
-			fmt.Fprintln(w, "PR のプレビューは /b/pr-<PR番号>/ を開いてください。例: /b/pr-6/")
+			fmt.Fprintln(w, "PR のプレビューは https://pr-<PR番号>."+app.baseDomain+"/ を開いてください")
 			fmt.Fprintln(w, "(ブランチ名は英小文字・数字・ハイフンのみ)")
 		})
 	} else {

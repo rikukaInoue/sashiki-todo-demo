@@ -24,6 +24,10 @@ Parameters:
   DbName:
     Type: String
     Default: todo
+  BaseDomain:
+    Type: String
+    Default: ""
+    Description: サブドメインでブランチを判定する場合のベースドメイン
   MultiBranch:
     Type: String
     Default: "false"
@@ -52,6 +56,7 @@ Resources:
           DB_PASSWORD: !Ref DbPassword
           DB_NAME: !Ref DbName
           MULTI_BRANCH: !Ref MultiBranch
+          BASE_DOMAIN: !Ref BaseDomain
       # VpcConfig を指定すると SAM が AWSLambdaVPCAccessExecutionRole を自動付与する
       VpcConfig:
         SubnetIds: !Ref SubnetIds

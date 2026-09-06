@@ -26,6 +26,7 @@ jobs:
             --parameter-overrides \
               BranchName="shared" \
               MultiBranch="true" \
+              BaseDomain="${{ vars.PREVIEW_DOMAIN }}" \
               DbHost="${{ vars.SASHIKI_DB_HOST }}" \
               DbPort="3306" \
               DbUser="dev" \

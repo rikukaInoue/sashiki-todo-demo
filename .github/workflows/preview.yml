@@ -108,7 +108,7 @@ jobs:
   # DB ブランチ + URL 発行だけなので数秒で終わる。
   app-shared:
     needs: db
-    if: github.event.action != 'closed' && vars.SHARED_APP_URL != ''
+    if: github.event.action != 'closed' && vars.PREVIEW_DOMAIN != ''
     runs-on: [self-hosted, vpc]
     env:
       PR: ${{ github.event.pull_request.number }}
@@ -117,7 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          url="${{ vars.SHARED_APP_URL }}b/pr-${PR}/"
+          url="https://pr-${PR}.${{ vars.PREVIEW_DOMAIN }}/"
           marker="<!-- sashiki-todo-preview -->"
           body="${marker}
           ## 🌿 プレビュー環境
@@ -138,7 +138,7 @@ jobs:
 
   app:
     needs: db
-    if: github.event.action != 'closed' && vars.AWS_REGION != '' && vars.SHARED_APP_URL == ''
+    if: github.event.action != 'closed' && vars.AWS_REGION != '' && vars.PREVIEW_DOMAIN == ''
     runs-on: [self-hosted, vpc]
     steps:
       - uses: actions/checkout@v4
@@ -222,7 +222,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: プレビュースタックを削除
-        if: vars.AWS_REGION != '' && vars.SHARED_APP_URL == ''
+        if: vars.AWS_REGION != '' && vars.PREVIEW_DOMAIN == ''
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
