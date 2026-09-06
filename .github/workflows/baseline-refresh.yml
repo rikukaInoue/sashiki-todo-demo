@@ -1,0 +1,42 @@
+# baseline の更新: main に migrations/ が入ったら(= PR の merge)sashiki の
+# baseline を refresh して、以後の新しい PR ブランチに反映する。
+# 既に開いている PR のブランチは影響を受けない(origin 固定)。追従は recreate。
+name: baseline-refresh
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['migrations/**']
+
+jobs:
+  refresh:
+    runs-on: [self-hosted, vpc]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: baseline ソースを配置して refresh
+        run: |
+          sudo mkdir -p /etc/sashiki/baseline-src
+          if compgen -G 'migrations/*.sql' > /dev/null; then
+            sudo cp migrations/*.sql /etc/sashiki/baseline-src/
+          fi
+          sudo sashiki baseline refresh
+          # 完了待ち(build → validate → publish)
+          for i in $(seq 1 120); do
+            out=$(curl -s http://127.0.0.1:8080/v1/baseline)
+            grep -q '"refreshing":false' <<<"$out" && break
+            sleep 5
+          done
+          echo "$out"
+          err=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1]).get("last_refresh_error",""))' "$out")
+          if [ -n "$err" ]; then
+            echo "::error::baseline refresh failed: $err"
+            exit 1
+          fi
+          cur=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1]).get("current",""))' "$out")
+          {
+            echo "### baseline refresh 完了"
+            echo '- current: `'"$cur"'`'
+            echo "- 既存 PR のブランチは旧 baseline のまま(追従は \`sashiki recreate pr-N\` + workflow 再実行)"
+          } >> "$GITHUB_STEP_SUMMARY"
