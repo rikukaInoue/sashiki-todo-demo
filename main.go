@@ -120,9 +120,14 @@ func main() {
 		mux.HandleFunc("POST /b/{branch}/todos", app.create)
 		mux.HandleFunc("POST /b/{branch}/todos/{id}/toggle", app.toggle)
 		mux.HandleFunc("POST /b/{branch}/todos/{id}/delete", app.delete)
-		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			fmt.Fprintln(w, "sashiki todo demo (multi-branch). /b/<branch>/ を開いてください。例: /b/pr-1/")
+			if r.URL.Path != "/" {
+				w.WriteHeader(http.StatusNotFound)
+			}
+			fmt.Fprintln(w, "sashiki todo demo (multi-branch)")
+			fmt.Fprintln(w, "PR のプレビューは /b/pr-<PR番号>/ を開いてください。例: /b/pr-6/")
+			fmt.Fprintln(w, "(ブランチ名は英小文字・数字・ハイフンのみ)")
 		})
 	} else {
 		mux.HandleFunc("GET /{$}", app.index)
@@ -164,7 +169,7 @@ func (a *App) page(branch, base string) PageData {
 func (a *App) index(w http.ResponseWriter, r *http.Request) {
 	branch, base, err := a.reqCtx(r)
 	if err != nil {
-		http.NotFound(w, r)
+		http.Error(w, "ブランチ名が不正です。/b/pr-<PR番号>/ の形式で開いてください(英小文字・数字・ハイフンのみ)", http.StatusNotFound)
 		return
 	}
 	p := a.page(branch, base)
