@@ -22,6 +22,8 @@
     .title { flex: 1; }
     .when { font-size: .75rem; opacity: .5; }
     button { cursor: pointer; }
+    .prio { font-size: .7rem; font-weight: bold; padding: .1rem .4rem; border-radius: 4px;
+            background: #d93f0b; color: #fff; }
     .error { background: rgba(200,0,0,.1); border: 1px solid rgba(200,0,0,.4);
              padding: 1rem; border-radius: 6px; }
   </style>
@@ -46,6 +48,7 @@
         <form method="post" action="todos/{{.ID}}/toggle">
           <button type="submit" title="切り替え">{{if .Done}}☑{{else}}☐{{end}}</button>
         </form>
+        {{if gt .Priority 0}}<span class="prio">P{{.Priority}}</span>{{end}}
         <span class="title">{{.Title}}</span>
         <span class="when">{{.CreatedAt}}</span>
         <form method="post" action="todos/{{.ID}}/delete">

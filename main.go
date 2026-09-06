@@ -34,6 +34,7 @@ type Todo struct {
 	Title     string
 	Done      bool
 	CreatedAt string
+	Priority  int // priority カラムがある branch のみ(なければ 0)
 }
 
 type PageData struct {
@@ -215,8 +216,18 @@ func (a *App) index(w http.ResponseWriter, r *http.Request) {
 		a.render(w, p)
 		return
 	}
-	rows, err := db.QueryContext(r.Context(),
-		"SELECT id, title, done, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') FROM todos ORDER BY done, id DESC")
+	// PR ごとにスキーマが違いうるので、新カラムは存在するときだけ読む
+	hasPriority := false
+	if err := db.QueryRowContext(r.Context(),
+		"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'todos' AND column_name = 'priority'").
+		Scan(&hasPriority); err != nil {
+		hasPriority = false
+	}
+	q := "SELECT id, title, done, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i'), 0 FROM todos ORDER BY done, id DESC"
+	if hasPriority {
+		q = "SELECT id, title, done, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i'), priority FROM todos ORDER BY done, priority DESC, id DESC"
+	}
+	rows, err := db.QueryContext(r.Context(), q)
 	if err != nil {
 		p.Error = fmt.Sprintf("DB に接続できません: %v", err)
 		a.render(w, p)
@@ -225,7 +236,7 @@ func (a *App) index(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	for rows.Next() {
 		var t Todo
-		if err := rows.Scan(&t.ID, &t.Title, &t.Done, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.Done, &t.CreatedAt, &t.Priority); err != nil {
 			p.Error = err.Error()
 			a.render(w, p)
 			return

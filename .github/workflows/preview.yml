@@ -42,6 +42,8 @@ jobs:
       port: ${{ steps.sashiki.outputs.port }}
       user: ${{ steps.sashiki.outputs.user }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: sashiki の DB ブランチを作成 (冪等) + PR コメント
         id: sashiki
         uses: rikukaInoue/sashiki/action@main
@@ -50,6 +52,16 @@ jobs:
           token: ${{ secrets.SASHIKI_API_TOKEN }}
           profile: preview
           comment: "true"
+
+      # PR に migrations/*.sql があれば、この PR のブランチだけに適用する。
+      # 他の PR や baseline には影響しない(スキーマも branch ごとに分離)。
+      - name: PR のマイグレーションを適用
+        run: |
+          shopt -s nullglob
+          for f in migrations/*.sql; do
+            echo "apply: $f"
+            mysql -h 127.0.0.1 -P 3306 -u "${{ steps.sashiki.outputs.user }}" -pdev todo < "$f"
+          done
 
   # AWS なしのローカルプレビュー: runner ホスト上でアプリを PR ごとのポートで起動する。
   # vars.LOCAL_PREVIEW=true で有効化。URL は runner ホスト(Lima なら Mac の localhost)で開ける。
