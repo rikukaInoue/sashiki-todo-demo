@@ -1,0 +1,38 @@
+# 共有アプリ(マルチブランチモードの Lambda Web Adapter)を 1 個だけデプロイする。
+# PR プレビューはこの共有 Lambda を使うため、PR 側ではビルドもデプロイも走らない。
+name: deploy-shared
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['main.go', 'templates/**', 'Dockerfile', 'template.yaml', '.github/workflows/deploy-shared.yml']
+
+jobs:
+  deploy:
+    if: vars.AWS_REGION != ''
+    runs-on: [self-hosted, vpc]
+    steps:
+      - uses: actions/checkout@v4
+      - name: sam build & deploy (shared)
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          sam build
+          sam deploy \
+            --stack-name sashiki-todo-shared \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              BranchName="shared" \
+              MultiBranch="true" \
+              DbHost="${{ vars.SASHIKI_DB_HOST }}" \
+              DbPort="3306" \
+              DbUser="dev" \
+              DbPassword="dev" \
+              SubnetIds=\"${{ vars.PREVIEW_SUBNET_IDS }}\" \
+              SecurityGroupIds=\"${{ vars.PREVIEW_SECURITY_GROUP_IDS }}\"
+          url=$(aws cloudformation describe-stacks --stack-name sashiki-todo-shared \
+            --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue" --output text)
+          echo "### shared app URL: ${url}" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL=${url}"

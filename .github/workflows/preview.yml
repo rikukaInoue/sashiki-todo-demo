@@ -104,9 +104,41 @@ jobs:
             gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body" > /dev/null
           fi
 
+  # 共有アプリモード: Lambda は常設 1 個(deploy-shared.yml)。PR 環境の作成は
+  # DB ブランチ + URL 発行だけなので数秒で終わる。
+  app-shared:
+    needs: db
+    if: github.event.action != 'closed' && vars.SHARED_APP_URL != ''
+    runs-on: [self-hosted, vpc]
+    env:
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - name: プレビュー URL を PR にコメント (冪等更新)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url="${{ vars.SHARED_APP_URL }}b/pr-${PR}/"
+          marker="<!-- sashiki-todo-preview -->"
+          body="${marker}
+          ## 🌿 プレビュー環境
+
+          | | |
+          |---|---|
+          | アプリ | ${url} |
+          | DB ブランチ | \`mysql -u${{ needs.db.outputs.user }} -h ${{ needs.db.outputs.host }} -P ${{ needs.db.outputs.port }}\` |
+
+          PR を閉じると DB ブランチは削除されます(アプリは共有)。"
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id" 2>/dev/null || true)
+          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" > /dev/null
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body" > /dev/null
+          fi
+
   app:
     needs: db
-    if: github.event.action != 'closed' && vars.AWS_REGION != ''
+    if: github.event.action != 'closed' && vars.AWS_REGION != '' && vars.SHARED_APP_URL == ''
     runs-on: [self-hosted, vpc]
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +152,7 @@ jobs:
       - name: ビルドとデプロイ (PR ごとに 1 スタック)
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
         run: |
           sam build
           sam deploy \
@@ -141,6 +174,8 @@ jobs:
           PORT: ${{ needs.db.outputs.port }}
           DBUSER: ${{ needs.db.outputs.user }}
           PR: ${{ github.event.pull_request.number }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
         run: |
           url=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue" --output text)
@@ -187,9 +222,10 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: プレビュースタックを削除
-        if: vars.AWS_REGION != ''
+        if: vars.AWS_REGION != '' && vars.SHARED_APP_URL == ''
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
         run: |
           aws cloudformation delete-stack --stack-name "$STACK_NAME"
           aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
