@@ -27,8 +27,9 @@ env:
 
 jobs:
   db:
-    # フォーク PR では実行しない(self-hosted runner の保護。README「公開時の注意」参照)
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    # フォーク PR では実行しない + PR 作成者が許可リスト(vars.PREVIEW_ALLOWED_ACTORS、
+    # カンマ区切り)に居る場合のみ実行(self-hosted runner の保護。README 参照)
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login))
     runs-on: [self-hosted, vpc]
     outputs:
       host: ${{ steps.sashiki.outputs.host }}
@@ -69,7 +70,7 @@ jobs:
   # vars.LOCAL_PREVIEW=true で有効化。URL は runner ホスト(Lima なら Mac の localhost)で開ける。
   app-local:
     needs: db
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && vars.LOCAL_PREVIEW == 'true'
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login)) && vars.LOCAL_PREVIEW == 'true'
     runs-on: [self-hosted, vpc]
     env:
       PR: ${{ github.event.pull_request.number }}
@@ -122,7 +123,7 @@ jobs:
   # DB ブランチ + URL 発行だけなので数秒で終わる。
   app-shared:
     needs: db
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && vars.PREVIEW_DOMAIN != ''
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login)) && vars.PREVIEW_DOMAIN != ''
     runs-on: [self-hosted, vpc]
     env:
       PR: ${{ github.event.pull_request.number }}
@@ -152,7 +153,7 @@ jobs:
 
   app:
     needs: db
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && vars.AWS_REGION != '' && vars.PREVIEW_DOMAIN == ''
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login)) && vars.AWS_REGION != '' && vars.PREVIEW_DOMAIN == ''
     runs-on: [self-hosted, vpc]
     steps:
       - uses: actions/checkout@v4
@@ -212,7 +213,7 @@ jobs:
           fi
 
   cleanup:
-    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login))
     runs-on: [self-hosted, vpc]
     env:
       PR: ${{ github.event.pull_request.number }}

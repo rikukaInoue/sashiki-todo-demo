@@ -54,6 +54,7 @@ Pull Request ──▶ GitHub Actions (self-hosted runner = sashiki サーバー
 | Variable | `PREVIEW_SECURITY_GROUP_IDS` | sashiki サーバーの 3306-3600 へ届く SG |
 | Variable | `AWS_ROLE_ARN` | (任意)OIDC ロール。無ければ runner の instance profile を使う |
 | Variable | `LOCAL_PREVIEW` | ローカルモードの有効化(`true`) |
+| Variable | `PREVIEW_ALLOWED_ACTORS` | プレビューを作れる PR 作成者の許可リスト(カンマ区切り。**未設定だと誰も作れない**) |
 
 ## リポジトリ外の共有インフラ(手動セットアップ)
 
@@ -113,4 +114,7 @@ MySQL には `baseline/schema.sql` が initdb として投入される。`migrat
 2. Settings → Actions → 「Fork pull request workflows」で **全ての外部コントリビューターに承認を必須**にする
 3. sashiki 側の上限(`max_branches` / TTL)をデモ向けに絞っておく(承認済み PR でもリソースは有界)
 
-フォークからの PR はプレビューが作られない(ガードで skip される)仕様となる。
+フォークからの PR はプレビューが作られない(ガードで skip される)。さらに同一リポの PR でも
+作成者が `PREVIEW_ALLOWED_ACTORS` に居なければ skip される(二重の許可リスト)。
+PR の受付自体を止めたい場合は interaction limits(`collaborators_only`、最長 6 ヶ月・更新可)を使う:
+`gh api repos/<owner>/<repo>/interaction-limits -X PUT -f limit=collaborators_only -f expiry=six_months`
