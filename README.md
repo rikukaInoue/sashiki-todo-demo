@@ -96,3 +96,5 @@ PR を開く → 数分でプレビュー URL がコメントされる。
 - Actions の closed イベントは取りこぼすことがあるため、DB ブランチの削除は
   sashiki 側の TTL 自動回収(sashiki issue #8)と併用する。アプリ側のスタックも
   同様に残ることがあるので、`sashiki-todo-pr-*` スタックの定期棚卸しを推奨
+
+<!-- verify #71 -->
