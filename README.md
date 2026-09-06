@@ -78,9 +78,14 @@ Pull Request ──▶ GitHub Actions (self-hosted runner = sashiki サーバー
 - `migrations/*.sql` を PR に含めると、db ジョブが**その PR のブランチにだけ**適用する
   (適用済みは `_migrations` テーブルで記録され、synchronize でも冪等)
 - アプリはスキーマ差分に耐える作り(例: `todos.priority` は存在するときだけ表示)
-- **PR を merge したら、そのマイグレーションは baseline に取り込んで snapshot を
-  取得し直すこと**(次の baseline refresh に含める)。取り込み後も `_migrations` の
-  記録があれば二重適用はされない
+- **PR を merge すると `baseline-refresh.yml` が自動で baseline を更新する**
+  (migrations/ を `/etc/sashiki/baseline-src/` に同期 → サーバー側 refresh.sh が
+  `_migrations` 記録つきで冪等適用 → build→validate→publish で current 切替)。
+  以後の新しい PR は新スキーマの baseline から生える
+- **既に開いている PR のブランチは影響を受けない**(origin 固定)。最新 baseline に
+  追従したい PR だけ `sashiki recreate pr-N` + workflow 再実行(git rebase main 相当)
+- 手動で回すときは Actions の baseline-refresh を workflow_dispatch、
+  切替の巻き戻しは `sashiki baseline set <旧snapshot>`、旧世代の回収は `sashiki baseline gc`
 
 ## ローカル開発
 
