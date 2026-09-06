@@ -106,17 +106,20 @@ jobs:
 
   app:
     needs: db
-    if: github.event.action != 'closed' && vars.AWS_ROLE_ARN != ''
+    if: github.event.action != 'closed' && vars.AWS_REGION != ''
     runs-on: [self-hosted, vpc]
     steps:
       - uses: actions/checkout@v4
 
       - uses: aws-actions/configure-aws-credentials@v4
+        if: vars.AWS_ROLE_ARN != ''
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: ビルドとデプロイ (PR ごとに 1 スタック)
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
         run: |
           sam build
           sam deploy \
@@ -125,7 +128,8 @@ jobs:
             --parameter-overrides \
               BranchName="$SASHIKI_BRANCH" \
               DbHost="${{ needs.db.outputs.host }}" \
-              DbPort="${{ needs.db.outputs.port }}" \
+              DbPort="3306" \
+              DbPassword="dev" \
               DbUser="${{ needs.db.outputs.user }}" \
               SubnetIds=\"${{ vars.PREVIEW_SUBNET_IDS }}\" \
               SecurityGroupIds=\"${{ vars.PREVIEW_SECURITY_GROUP_IDS }}\"
@@ -183,7 +187,9 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: プレビュースタックを削除
-        if: vars.AWS_ROLE_ARN != ''
+        if: vars.AWS_REGION != ''
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
         run: |
           aws cloudformation delete-stack --stack-name "$STACK_NAME"
           aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
