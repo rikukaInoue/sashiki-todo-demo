@@ -4,6 +4,8 @@
 Go の TODO アプリ(Lambda Web Adapter)に **PR ごとのプレビュー環境**が付く。
 DB は RDS の代わりに sashiki の DB ブランチ — アプリは `DB_HOST/PORT/USER` を env で受けるだけの普通の HTTP アプリで、sashiki を知らない。
 
+このデモの設計・AWS 構成・実運用で踏んだバグの解説記事: [PoC から OSS へ — MySQL のデータベースブランチ基盤『sashiki』を作って公開した](https://rikuka.dev/blog/db-branch-sashiki-oss/)
+
 PR を開くと:
 
 1. sashiki が DB ブランチ `pr-<N>` を数秒で生やす(CoW クローン、実データ入り)
