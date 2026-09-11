@@ -21,6 +21,9 @@ jobs:
     # fork PR 拒否 + 実行者許可リスト(self-hosted runner の保護)
     if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login))
     runs-on: [self-hosted, vpc]
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +46,9 @@ jobs:
   cleanup:
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login))
     runs-on: [self-hosted, vpc]
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
     steps:
       - uses: actions/checkout@v4
       - uses: rikukadev/kagerou/action@main
