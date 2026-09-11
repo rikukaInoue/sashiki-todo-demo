@@ -1,0 +1,21 @@
+# kagerou の設定(https://github.com/rikukadev/kagerou)。
+# sashiki 併用の推奨構成: 接続情報は sashiki プロキシの username routing により
+# 「名前から導出」できるので、動的な outputs の受け渡しが無い(DESIGN §5)。
+project: sashiki-todo-demo
+driver: stack
+template: packaged.yaml # sam build && sam package の出力
+region: ap-northeast-1
+name_prefix: sashiki-todo- # EC2 の IAM スコープ(role/sashiki-todo-*)に合わせる
+ttl: 72h
+env:
+  SASHIKI_BRANCH: "{name}"
+  DB_HOST: sashiki.internal # private zone → sashikid の EC2
+  DB_PORT: "3306"           # sashiki プロキシ(username routing)
+  DB_USER: dev@{name}
+  DB_PASSWORD: dev
+  DB_NAME: todo
+hooks:
+  # || true は CLI が --exist-ok 未対応のための暫定(2 回目の create が 409 になる)。
+  # sashiki#259 が入ったら `sashiki create {name} --exist-ok` に置き換える
+  pre_up: sashiki create {name} || true
+  post_down: sashiki delete {name}
