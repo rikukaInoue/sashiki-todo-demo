@@ -1,11 +1,7 @@
-# PR プレビュー環境: sashiki の DB ブランチを PR ごとに作り、close で消す。
-# アプリの出し方は 3 モード(詳細は README「3 つの動作モード」):
-#   db         — DB ブランチ作成 + migrations 適用 + PR コメント(常に動く)
-#   app-shared — 共有 Lambda の URL (https://pr-N.<PREVIEW_DOMAIN>/) をコメント(vars.PREVIEW_DOMAIN)
-#   app        — PR ごとに SAM スタック(vars.AWS_REGION あり && PREVIEW_DOMAIN 空)
-#   app-local  — runner ホストの systemd unit(vars.LOCAL_PREVIEW=true)
-#   cleanup    — close で DB ブランチ削除(+ モードに応じた後片付け)
-# Variables/Secrets の一覧は README を参照。runner は sashikid に届く場所で動かす。
+# PR プレビュー環境(kagerou 版)。旧 preview.yml 約 260 行の役割は
+# kagerou.yaml + kagerou action に移した(DB ブランチは hooks の sashiki create、
+# 接続情報は username routing で名前から導出、cleanup は close + TTL reap)。
+# runner は sashikid と同居する self-hosted(VPC 内)。AWS 権限は instance profile。
 name: pr-preview
 
 on:
@@ -13,7 +9,6 @@ on:
     types: [opened, reopened, synchronize, closed]
 
 permissions:
-  id-token: write
   contents: read
   pull-requests: write
 
@@ -21,242 +16,36 @@ concurrency:
   group: preview-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
-env:
-  SASHIKI_BRANCH: pr-${{ github.event.pull_request.number }}
-  STACK_NAME: sashiki-todo-pr-${{ github.event.pull_request.number }}
-
 jobs:
-  db:
-    # フォーク PR では実行しない + PR 作成者が許可リスト(vars.PREVIEW_ALLOWED_ACTORS、
-    # カンマ区切り)に居る場合のみ実行(self-hosted runner の保護。README 参照)
+  preview:
+    # fork PR 拒否 + 実行者許可リスト(self-hosted runner の保護)
     if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login))
     runs-on: [self-hosted, vpc]
-    outputs:
-      host: ${{ steps.sashiki.outputs.host }}
-      port: ${{ steps.sashiki.outputs.port }}
-      user: ${{ steps.sashiki.outputs.user }}
     steps:
       - uses: actions/checkout@v4
 
-      # migrations は workflow が適用せず、create 時の on-create hook が適用する
-      # (@init に含まれるため reset でも保持される。#8)
-      - name: PR の migrations をステージ
-        id: stage
-        env:
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          SRC="/var/lib/sashiki/pr-src/pr-${PR}"
-          sudo mkdir -p "$SRC"
-          sudo find "$SRC" -maxdepth 1 -name '*.sql' -delete
-          if compgen -G 'migrations/*.sql' > /dev/null; then
-            sudo cp migrations/*.sql "$SRC"/
-          fi
-          hash=$( (ls "$SRC"/*.sql 2>/dev/null | sort; cat "$SRC"/*.sql 2>/dev/null) | sha256sum | cut -d' ' -f1)
-          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/amazon-ecr-login@v2
 
-      - name: sashiki の DB ブランチを作成 (冪等) + PR コメント
-        id: sashiki
-        uses: rikukaInoue/sashiki/action@main
-        with:
-          api_url: ${{ vars.SASHIKI_API_URL }}
-          token: ${{ secrets.SASHIKI_API_TOKEN }}
-          profile: preview
-          comment: "true"
-
-      # 新規作成なら hook が適用済み。既存ブランチで migrations が変わっていたら
-      # recreate(hook が新 @init に再適用)する。
-      - name: migrations 変更時は recreate
-        env:
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          SRC="/var/lib/sashiki/pr-src/pr-${PR}"
-          prev=$(sudo cat "$SRC/.applied-hash" 2>/dev/null || echo none)
-          if [ "${{ steps.sashiki.outputs.created }}" = "true" ] || [ "$prev" = "${{ steps.stage.outputs.hash }}" ]; then
-            echo "${{ steps.stage.outputs.hash }}" | sudo tee "$SRC/.applied-hash" > /dev/null
-            exit 0
-          fi
-          echo "migrations が変わったため recreate します"
-          curl -sf -X POST "http://127.0.0.1:8080/v1/branches/pr-${PR}/recreate" > /dev/null
-          echo "${{ steps.stage.outputs.hash }}" | sudo tee "$SRC/.applied-hash" > /dev/null
-
-  # AWS なしのローカルプレビュー: runner ホスト上でアプリを PR ごとのポートで起動する。
-  # vars.LOCAL_PREVIEW=true で有効化。URL は runner ホスト(Lima なら Mac の localhost)で開ける。
-  app-local:
-    needs: db
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login)) && vars.LOCAL_PREVIEW == 'true'
-    runs-on: [self-hosted, vpc]
-    env:
-      PR: ${{ github.event.pull_request.number }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: ビルドして PR ごとの systemd unit で起動
-        run: |
-          PORT=$((9000 + PR))
-          go build -o /tmp/todo-pr-${PR} .
-          sudo mkdir -p /opt/sashiki-todo
-          sudo install /tmp/todo-pr-${PR} /opt/sashiki-todo/todo-pr-${PR}
-          sudo systemctl stop "todo-pr-${PR}" 2>/dev/null || true
-          sudo systemd-run --collect --unit "todo-pr-${PR}" \
-            -E PORT=${PORT} -E DB_HOST=127.0.0.1 -E DB_PORT=3307 \
-            -E "DB_USER=${{ needs.db.outputs.user }}" -E DB_PASSWORD=dev -E DB_NAME=todo \
-            -E SASHIKI_BRANCH=pr-${PR} \
-            "/opt/sashiki-todo/todo-pr-${PR}"
-          for i in $(seq 1 20); do
-            curl -sf "http://127.0.0.1:${PORT}/healthz" > /dev/null && break
-            sleep 0.5
-          done
-          curl -sf "http://127.0.0.1:${PORT}/healthz" > /dev/null || { sudo journalctl -u "todo-pr-${PR}" | tail -20; exit 1; }
-      - name: プレビュー URL を PR にコメント (冪等更新)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PORT=$((9000 + PR))
-          marker="<!-- sashiki-todo-preview -->"
-          body="${marker}
-          ## 🖥 アプリプレビュー(ローカルモード)
-
-          | | |
-          |---|---|
-          | アプリ | http://localhost:${PORT} (runner ホストから) |
-          | DB ブランチ | \`mysql -u${{ needs.db.outputs.user }} -h ${{ needs.db.outputs.host }} -P ${{ needs.db.outputs.port }}\` |
-
-          PR を閉じるとアプリと DB ブランチはどちらも削除されます。"
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id" 2>/dev/null || true)
-          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
-            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" > /dev/null
-          else
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body" > /dev/null
-          fi
-
-  # 共有アプリモード: Lambda は常設 1 個(deploy-shared.yml)。PR 環境の作成は
-  # DB ブランチ + URL 発行だけなので数秒で終わる。
-  app-shared:
-    needs: db
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login)) && vars.PREVIEW_DOMAIN != ''
-    runs-on: [self-hosted, vpc]
-    env:
-      PR: ${{ github.event.pull_request.number }}
-    steps:
-      - name: プレビュー URL を PR にコメント (冪等更新)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          url="https://pr-${PR}.${{ vars.PREVIEW_DOMAIN }}/"
-          marker="<!-- sashiki-todo-preview -->"
-          body="${marker}
-          ## 🌿 プレビュー環境
-
-          | | |
-          |---|---|
-          | アプリ | ${url} |
-          | DB ブランチ | \`mysql -u${{ needs.db.outputs.user }} -h ${{ needs.db.outputs.host }} -P ${{ needs.db.outputs.port }}\` |
-
-          PR を閉じると DB ブランチは削除されます(アプリは共有)。"
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id" 2>/dev/null || true)
-          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
-            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" > /dev/null
-          else
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body" > /dev/null
-          fi
-
-  app:
-    needs: db
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login)) && vars.AWS_REGION != '' && vars.PREVIEW_DOMAIN == ''
-    runs-on: [self-hosted, vpc]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        if: vars.AWS_ROLE_ARN != ''
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: ビルドとデプロイ (PR ごとに 1 スタック)
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+      - name: Build and package image
         run: |
           sam build
-          sam deploy \
-            --stack-name "$STACK_NAME" \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              BranchName="$SASHIKI_BRANCH" \
-              DbHost="${{ needs.db.outputs.host }}" \
-              DbPort="3306" \
-              DbPassword="dev" \
-              DbUser="${{ needs.db.outputs.user }}" \
-              SubnetIds=\"${{ vars.PREVIEW_SUBNET_IDS }}\" \
-              SecurityGroupIds=\"${{ vars.PREVIEW_SECURITY_GROUP_IDS }}\"
+          sam package \
+            --image-repository "${{ vars.ECR_REPOSITORY }}" \
+            --output-template-file packaged.yaml
 
-      - name: プレビュー URL を PR にコメント (冪等更新)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HOST: ${{ needs.db.outputs.host }}
-          PORT: ${{ needs.db.outputs.port }}
-          DBUSER: ${{ needs.db.outputs.user }}
-          PR: ${{ github.event.pull_request.number }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-        run: |
-          url=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
-            --query "Stacks[0].Outputs[?OutputKey=='PreviewUrl'].OutputValue" --output text)
-          marker="<!-- sashiki-todo-preview -->"
-          body="${marker}
-          ## 🌿 プレビュー環境
-
-          | | |
-          |---|---|
-          | アプリ | ${url} |
-          | DB ブランチ | \`mysql -u${DBUSER} -h ${HOST} -P ${PORT}\` |
-
-          PR を閉じるとアプリと DB ブランチはどちらも削除されます。"
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id" 2>/dev/null || true)
-          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
-            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" > /dev/null
-          else
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$body" > /dev/null
-          fi
+      - uses: rikukadev/kagerou/action@main
+        with:
+          name: pr-${{ github.event.pull_request.number }}
+          param: |
+            SubnetIds=${{ vars.PREVIEW_SUBNET_IDS }}
+            SecurityGroupIds=${{ vars.PREVIEW_SECURITY_GROUP_IDS }}
 
   cleanup:
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository && contains(format(',{0},', vars.PREVIEW_ALLOWED_ACTORS), format(',{0},', github.event.pull_request.user.login))
     runs-on: [self-hosted, vpc]
-    env:
-      PR: ${{ github.event.pull_request.number }}
     steps:
-      - name: ローカルプレビューを停止
-        if: vars.LOCAL_PREVIEW == 'true'
-        run: |
-          sudo systemctl stop "todo-pr-${PR}" 2>/dev/null || true
-          sudo rm -f "/opt/sashiki-todo/todo-pr-${PR}"
-
-      - name: migrations ステージを削除
-        run: sudo rm -rf "/var/lib/sashiki/pr-src/pr-${PR}"
-
-      - name: sashiki の DB ブランチを削除 (404 も成功扱い)
-        uses: rikukaInoue/sashiki/action@main
+      - uses: actions/checkout@v4
+      - uses: rikukadev/kagerou/action@main
         with:
-          api_url: ${{ vars.SASHIKI_API_URL }}
-          token: ${{ secrets.SASHIKI_API_TOKEN }}
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        if: vars.AWS_ROLE_ARN != ''
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: プレビュースタックを削除
-        if: vars.AWS_REGION != '' && vars.PREVIEW_DOMAIN == ''
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-        run: |
-          aws cloudformation delete-stack --stack-name "$STACK_NAME"
-          aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
+          name: pr-${{ github.event.pull_request.number }}
+          down: "true"
